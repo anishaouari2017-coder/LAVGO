@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { supabase } from "../lib/supabase";
 
 export type Service = {
   id: string;
@@ -21,6 +22,7 @@ export type Station = {
 
 export type Reservation = {
   id: string;
+  codeReservation?: string;
   stationNom: string;
   stationVille: string;
   serviceNom: string;
@@ -30,7 +32,7 @@ export type Reservation = {
   vehicule: string;
   nomClient: string;
   telephone: string;
-  statut: "Confirmée" | "Annulée";
+  statut: "Confirmee" | "Terminee" | "Annulee" | string;
 };
 
 type Props = {
@@ -52,26 +54,62 @@ export default function ReservationModal({ station, onClose, onConfirm }: Props)
   const [nomClient, setNomClient] = useState("");
   const [telephone, setTelephone] = useState("");
   const [estConfirme, setEstConfirme] = useState(false);
+  const [enCours, setEnCours] = useState(false);
+  const [erreur, setErreur] = useState("");
+  const [codeGenere, setCodeGenere] = useState("");
 
   const service = station.services.find((s) => s.id === serviceId) || premier;
   if (!service) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onConfirm({
-      id: "RES-" + Date.now().toString().slice(-5),
-      stationNom: station.nom,
-      stationVille: station.ville,
-      serviceNom: service.nom,
-      prixTnd: service.prixTnd,
-      date,
-      heure,
-      vehicule,
-      nomClient,
-      telephone,
-      statut: "Confirmée",
-    });
-    setEstConfirme(true);
+    setErreur("");
+    setEnCours(true);
+
+    const code = "RES-" + Date.now().toString().slice(-5);
+
+    try {
+      const { data, error } = await supabase
+        .from("reservations")
+        .insert({
+          code_reservation: code,
+          statut: "Confirmee",
+          station_nom: station.nom,
+          station_ville: station.ville,
+          service_nom: service.nom,
+          prix_tnd: service.prixTnd,
+          nom_client: nomClient,
+          telephone: telephone,
+          vehicule: vehicule,
+          date_reservation: date,
+          heure_reservation: heure,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setCodeGenere(code);
+      onConfirm({
+        id: data.id,
+        codeReservation: code,
+        stationNom: station.nom,
+        stationVille: station.ville,
+        serviceNom: service.nom,
+        prixTnd: service.prixTnd,
+        date,
+        heure,
+        vehicule,
+        nomClient,
+        telephone,
+        statut: "Confirmee",
+      });
+      setEstConfirme(true);
+    } catch (err: any) {
+      setErreur(err.message || "Erreur lors de l'enregistrement de la reservation.");
+    } finally {
+      setEnCours(false);
+    }
   };
 
   return (
@@ -104,6 +142,7 @@ export default function ReservationModal({ station, onClose, onConfirm }: Props)
             <h4 className="mt-4 text-xl font-bold text-slate-900">
               Réservation confirmée !
             </h4>
+            <p className="mt-1 text-xs font-bold text-blue-600">Code : #{codeGenere}</p>
             <p className="mt-2 text-sm text-slate-600">
               Merci <span className="font-semibold">{nomClient}</span>. Votre créneau est enregistré.
             </p>
@@ -202,11 +241,18 @@ export default function ReservationModal({ station, onClose, onConfirm }: Props)
               </div>
             </div>
 
+            {erreur && (
+              <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {erreur}
+              </p>
+            )}
+
             <button
               type="submit"
-              className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+              disabled={enCours}
+              className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              Confirmer la réservation ({service.prixTnd} TND)
+              {enCours ? "Enregistrement..." : `Confirmer la réservation (${service.prixTnd} TND)`}
             </button>
           </form>
         )}
